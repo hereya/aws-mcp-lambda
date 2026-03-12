@@ -1,8 +1,8 @@
 {
-  "name": "aws-lambda-apigw",
+  "name": "aws-mcp-lambda",
   "version": "0.1.0",
   "bin": {
-    "aws-lambda-apigw": "bin/aws-lambda-apigw.js"
+    "aws-mcp-lambda": "bin/aws-mcp-lambda.js"
   },
   "scripts": {
     "build": "tsc",
@@ -13,9 +13,9 @@
   "devDependencies": {
     "@types/jest": "^30",
     "@types/node": "^24.10.1",
+    "aws-cdk": "^2.1111.0",
     "jest": "^30",
     "ts-jest": "^29",
-    "aws-cdk": "2.1100.3",
     "ts-node": "^10.9.2",
     "typescript": "~5.9.3"
   },
