@@ -1,6 +1,8 @@
 *.js
 !jest.config.js
+!lib/authorizer/index.js
 *.d.ts
+!lib/authorizer/index.d.ts
 node_modules
 
 # CDK asset staging directory
