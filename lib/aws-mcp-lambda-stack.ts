@@ -9,7 +9,6 @@ import * as route53 from "aws-cdk-lib/aws-route53";
 import * as targets from "aws-cdk-lib/aws-route53-targets";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import * as authorizers from "aws-cdk-lib/aws-apigatewayv2-authorizers";
-import * as cognito from "aws-cdk-lib/aws-cognito";
 import { Construct } from "constructs";
 import * as path from "path";
 
@@ -29,7 +28,8 @@ export class AwsMcpLambdaStack extends cdk.Stack {
       ? parseInt(process.env["timeout"])
       : 30;
     const handlerName = process.env["handler"] ?? "handler.handler";
-    const cognitoUserPoolId = process.env["cognitoUserPoolId"];
+    const oauthServerUrl = process.env["oauthServerUrl"];
+    const organizationId = process.env["organizationId"];
     const customDomain = process.env["customDomain"];
     const customDomainZone =
       process.env["customDomainZone"] ?? extractDomainZone(customDomain);
@@ -110,27 +110,74 @@ export class AwsMcpLambdaStack extends cdk.Stack {
       fn
     );
 
-    // Optional Cognito JWT auth
-    let jwtAuthorizer: authorizers.HttpJwtAuthorizer | undefined;
-    if (cognitoUserPoolId) {
-      const userPool = cognito.UserPool.fromUserPoolId(
-        this,
-        "UserPool",
-        cognitoUserPoolId
-      );
-      const client = new cognito.UserPoolClient(this, "McpClient", {
-        userPool,
-        authFlows: { userSrp: true },
-        generateSecret: false,
+    // Determine the service URL early (needed for Protected Resource Metadata)
+    const serviceUrl = customDomain
+      ? `https://${customDomain}`
+      : httpApi.apiEndpoint;
+
+    // Optional hereya OAuth auth
+    let httpAuthorizer: authorizers.HttpLambdaAuthorizer | undefined;
+    if (oauthServerUrl && organizationId) {
+      // Lambda authorizer for JWT validation + org check
+      const authorizerFn = new lambda.Function(this, "AuthorizerHandler", {
+        runtime: lambda.Runtime.NODEJS_22_X,
+        handler: "index.handler",
+        code: lambda.Code.fromAsset(path.join(__dirname, "authorizer")),
+        memorySize: 128,
+        timeout: cdk.Duration.seconds(10),
+        environment: {
+          OAUTH_SERVER_URL: oauthServerUrl,
+          BOUND_ORG_ID: organizationId,
+        },
       });
-      const region = cdk.Stack.of(this).region;
-      jwtAuthorizer = new authorizers.HttpJwtAuthorizer(
-        "CognitoAuthorizer",
-        `https://cognito-idp.${region}.amazonaws.com/${cognitoUserPoolId}`,
-        { jwtAudience: [client.userPoolClientId] }
+
+      httpAuthorizer = new authorizers.HttpLambdaAuthorizer(
+        "HereyaAuthorizer",
+        authorizerFn,
+        {
+          responseTypes: [authorizers.HttpLambdaResponseType.SIMPLE],
+          resultsCacheTtl: cdk.Duration.minutes(5),
+        }
       );
-      new cdk.CfnOutput(this, "UserPoolClientId", {
-        value: client.userPoolClientId,
+
+      // Protected Resource Metadata — inline Lambda returning static JSON
+      const prmLambda = new lambda.Function(this, "PrmHandler", {
+        runtime: lambda.Runtime.NODEJS_22_X,
+        handler: "index.handler",
+        code: lambda.Code.fromInline(`
+          exports.handler = async () => ({
+            statusCode: 200,
+            headers: {
+              "Content-Type": "application/json",
+              "Cache-Control": "public, max-age=3600",
+              "Access-Control-Allow-Origin": "*",
+            },
+            body: JSON.stringify({
+              resource: process.env.SERVICE_URL + "/mcp",
+              authorization_servers: [process.env.OAUTH_SERVER_URL + "/oauth/" + process.env.ORGANIZATION_ID],
+              bearer_methods_supported: ["header"],
+              scopes_supported: ["mcp:access"],
+            }),
+          });
+        `),
+        memorySize: 128,
+        timeout: cdk.Duration.seconds(5),
+        environment: {
+          SERVICE_URL: serviceUrl,
+          OAUTH_SERVER_URL: oauthServerUrl,
+          ORGANIZATION_ID: organizationId,
+        },
+      });
+
+      const prmIntegration = new integrations.HttpLambdaIntegration(
+        "PrmIntegration",
+        prmLambda
+      );
+
+      httpApi.addRoutes({
+        path: "/.well-known/oauth-protected-resource",
+        methods: [apigwv2.HttpMethod.GET],
+        integration: prmIntegration,
       });
     }
 
@@ -138,7 +185,7 @@ export class AwsMcpLambdaStack extends cdk.Stack {
       path: "/mcp",
       methods: [apigwv2.HttpMethod.POST],
       integration: lambdaIntegration,
-      ...(jwtAuthorizer ? { authorizer: jwtAuthorizer } : {}),
+      ...(httpAuthorizer ? { authorizer: httpAuthorizer } : {}),
     });
 
     // Custom domain

@@ -1,6 +1,6 @@
 name: aws/mcp-lambda
-version: 0.2.0
-description: "Deploys a stateless MCP server as a Lambda function behind API Gateway HTTP API with POST /mcp route, optional Cognito JWT authentication, secure secret handling via Secrets Manager, and optional custom domain."
+version: 0.3.0
+description: "Deploys a stateless MCP server as a Lambda function behind API Gateway HTTP API with POST /mcp route, optional hereya OAuth authentication with org-based access control, secure secret handling via Secrets Manager, and optional custom domain."
 visibility: public
 iac: cdk
 infra: aws
