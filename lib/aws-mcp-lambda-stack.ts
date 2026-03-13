@@ -136,7 +136,7 @@ export class AwsMcpLambdaStack extends cdk.Stack {
         authorizerFn,
         {
           responseTypes: [authorizers.HttpLambdaResponseType.SIMPLE],
-          resultsCacheTtl: cdk.Duration.minutes(5),
+          resultsCacheTtl: cdk.Duration.seconds(0),
           identitySource: [],
         }
       );
