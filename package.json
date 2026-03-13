@@ -1,6 +1,6 @@
 {
   "name": "aws-mcp-lambda",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "bin": {
     "aws-mcp-lambda": "bin/aws-mcp-lambda.js"
   },
