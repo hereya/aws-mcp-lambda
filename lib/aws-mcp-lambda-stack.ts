@@ -8,6 +8,8 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import * as route53 from "aws-cdk-lib/aws-route53";
 import * as targets from "aws-cdk-lib/aws-route53-targets";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
+import * as authorizers from "aws-cdk-lib/aws-apigatewayv2-authorizers";
+import * as cognito from "aws-cdk-lib/aws-cognito";
 import { Construct } from "constructs";
 import * as path from "path";
 
@@ -27,6 +29,7 @@ export class AwsMcpLambdaStack extends cdk.Stack {
       ? parseInt(process.env["timeout"])
       : 30;
     const handlerName = process.env["handler"] ?? "handler.handler";
+    const cognitoUserPoolId = process.env["cognitoUserPoolId"];
     const customDomain = process.env["customDomain"];
     const customDomainZone =
       process.env["customDomainZone"] ?? extractDomainZone(customDomain);
@@ -107,10 +110,35 @@ export class AwsMcpLambdaStack extends cdk.Stack {
       fn
     );
 
+    // Optional Cognito JWT auth
+    let jwtAuthorizer: authorizers.HttpJwtAuthorizer | undefined;
+    if (cognitoUserPoolId) {
+      const userPool = cognito.UserPool.fromUserPoolId(
+        this,
+        "UserPool",
+        cognitoUserPoolId
+      );
+      const client = new cognito.UserPoolClient(this, "McpClient", {
+        userPool,
+        authFlows: { userSrp: true },
+        generateSecret: false,
+      });
+      const region = cdk.Stack.of(this).region;
+      jwtAuthorizer = new authorizers.HttpJwtAuthorizer(
+        "CognitoAuthorizer",
+        `https://cognito-idp.${region}.amazonaws.com/${cognitoUserPoolId}`,
+        { jwtAudience: [client.userPoolClientId] }
+      );
+      new cdk.CfnOutput(this, "UserPoolClientId", {
+        value: client.userPoolClientId,
+      });
+    }
+
     httpApi.addRoutes({
       path: "/mcp",
       methods: [apigwv2.HttpMethod.POST],
       integration: lambdaIntegration,
+      ...(jwtAuthorizer ? { authorizer: jwtAuthorizer } : {}),
     });
 
     // Custom domain
