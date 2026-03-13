@@ -102,7 +102,7 @@ export async function handler(
   const authHeader =
     event.headers?.authorization ?? event.headers?.Authorization;
   if (!authHeader?.startsWith("Bearer ")) {
-    return { isAuthorized: true, context: { authenticated: "false" } };
+    return { isAuthorized: false };
   }
 
   const token = authHeader.slice(7);
@@ -116,7 +116,7 @@ export async function handler(
     };
 
     if (header.alg !== "RS256") {
-      return { isAuthorized: true, context: { authenticated: "false" } };
+      return { isAuthorized: false };
     }
 
     // Fetch JWKS
@@ -128,29 +128,29 @@ export async function handler(
       : jwks.keys[0];
 
     if (!jwk) {
-      return { isAuthorized: true, context: { authenticated: "false" } };
+      return { isAuthorized: false };
     }
 
     // Verify signature and decode
     const payload = verifyRS256(token, jwk);
     if (!payload) {
-      return { isAuthorized: true, context: { authenticated: "false" } };
+      return { isAuthorized: false };
     }
 
     // Check expiration
     const now = Math.floor(Date.now() / 1000);
     if (typeof payload.exp === "number" && payload.exp < now) {
-      return { isAuthorized: true, context: { authenticated: "false" } };
+      return { isAuthorized: false };
     }
 
     // Check issuer
     if (payload.iss !== process.env.OAUTH_SERVER_URL) {
-      return { isAuthorized: true, context: { authenticated: "false" } };
+      return { isAuthorized: false };
     }
 
     // Check org_id matches bound org
     if (payload.org_id !== process.env.BOUND_ORG_ID) {
-      return { isAuthorized: true, context: { authenticated: "false" } };
+      return { isAuthorized: false };
     }
 
     return {
@@ -162,6 +162,6 @@ export async function handler(
       },
     };
   } catch {
-    return { isAuthorized: true, context: { authenticated: "false" } };
+    return { isAuthorized: false };
   }
 }

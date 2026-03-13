@@ -1,5 +1,5 @@
 name: aws/mcp-lambda
-version: 0.3.5
+version: 0.3.6
 description: "Deploys a stateless MCP server as a Lambda function behind API Gateway HTTP API with POST /mcp route, optional hereya OAuth authentication with org-based access control, secure secret handling via Secrets Manager, and optional custom domain."
 visibility: public
 iac: cdk
